@@ -135,6 +135,43 @@ return function(H)
     c:stop()
   end)
 
+  H.it("comes back after something else closes the float", function()
+    -- Regression: update() used to be gated on the session list having changed,
+    -- so a float closed by a session restore or a window wipe stayed gone until
+    -- tmux itself changed -- possibly hours.
+    local c = child()
+    c:fixture({ H.line("$1", 1000, "main") })
+    H.ok(c:ghost())
+    -- Drop the self-heal autocmds first, so this exercises the refresh gate
+    -- alone rather than being rescued by the window events.
+    c:lua([[
+      vim.api.nvim_del_augroup_by_name("TmuxSessionsGhost")
+      vim.api.nvim_win_close(require("tmux-sessions.ghost")._win(), true)
+    ]])
+    H.eq(nil, c:ghost(), "closed, with nothing left to restore it")
+    -- Same session list as before: the old gate would have skipped the redraw.
+    c:fixture({ H.line("$1", 1000, "main") })
+    H.ok(c:ghost(), "an unchanged list must still re-assert the float")
+    c:stop()
+  end)
+
+  H.it("re-asserts itself on a window event without any tmux query", function()
+    local c = child()
+    c:fixture({ H.line("$1", 1000, "main") })
+    c:lua([[
+      _G.__spawns = 0
+      local S = require("tmux-sessions.sessions")
+      local real = S.spawn
+      S.spawn = function(a, cb) _G.__spawns = _G.__spawns + 1; return real(a, cb) end
+      vim.api.nvim_win_close(require("tmux-sessions.ghost")._win(), true)
+      vim.api.nvim_exec_autocmds("BufWinEnter", {})
+    ]])
+    c:wait("return require('tmux-sessions.ghost')._win() ~= nil")
+    H.ok(c:ghost(), "restored by the autocmd")
+    H.eq(0, c:lua("return _G.__spawns"), "self-healing must not cost a subprocess")
+    c:stop()
+  end)
+
   H.it("ghost.enabled = false opens no window", function()
     local c = child({ ghost = { enabled = false } })
     c:fixture({ H.line("$1", 1000, "main") })

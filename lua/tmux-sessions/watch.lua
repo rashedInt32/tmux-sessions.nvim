@@ -32,14 +32,20 @@ local TAG = "tmux-sessions.nvim"
 
 local timer, fswatch
 
---- Re-query, and rebuild keys and ghost text only if something actually moved.
----@param force? boolean redraw even when the list is unchanged
+--- Re-query, then rebuild the keymaps only if the list actually moved.
+---
+--- The ghost text is redrawn unconditionally. Gating it on `changed` meant that
+--- anything which closed the float -- a session restore, a window wipe, a
+--- picker that rearranged the layout -- left it gone until the *tmux* session
+--- list happened to change, which can be hours. update() costs 0.0011ms and
+--- early-returns when nothing moved, so there is nothing to save by skipping it.
+---@param force? boolean rebuild keymaps even when the list is unchanged
 function M.refresh(force)
   Sessions.refresh(function(changed)
     if changed or force then
       Keys.apply()
-      Ghost.update()
     end
+    Ghost.update()
   end)
 end
 

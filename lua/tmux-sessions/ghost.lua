@@ -214,6 +214,30 @@ function M.enable()
     desc = "Reposition the tmux-sessions ghost text",
     callback = M.update,
   })
+  -- Self-heal on the draw path, the same way highlights.ensure does.
+  --
+  -- A float is easy to lose: a session restore, `:only`, a picker that rebuilds
+  -- the window layout, or a plugin that closes every float can take it out, and
+  -- none of those fire an event saying so. Re-asserting on the events that
+  -- follow such a change is cheaper than trying to enumerate the causes.
+  -- update() early-returns when the window is still valid and nothing moved, so
+  -- the common case is a validity check and two comparisons.
+  vim.api.nvim_create_autocmd({
+    "BufWinEnter",
+    "WinEnter",
+    "WinClosed",
+    "TabEnter",
+    "SessionLoadPost",
+    "ColorScheme",
+  }, {
+    group = group,
+    desc = "Re-assert the tmux-sessions ghost text if something closed it",
+    callback = function()
+      -- Deferred: during WinClosed and SessionLoadPost the layout is still
+      -- settling, and a float opened mid-teardown can be taken out with it.
+      vim.schedule(M.update)
+    end,
+  })
   if Config.options.ghost.hide_in_insert then
     vim.api.nvim_create_autocmd({ "InsertEnter", "InsertLeave" }, {
       group = group,
