@@ -1,7 +1,12 @@
 # tmux-sessions.nvim
 
-Every tmux session on your machine, pinned to the top-right of Neovim, each one
-a `<leader>N` away.
+Jump between tmux sessions from inside Neovim, each one a `<leader>N` away.
+
+https://github.com/user-attachments/assets/568af6c1-cafa-4e5d-8da1-80abe3002e7f
+
+Two ways to see the list: a popup on `<leader>ts`, or an always-on floating
+window in the top-right. Either way the numbers are the point — `<leader>3` goes
+to session 3 whether or not anything is drawn.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -13,13 +18,13 @@ a `<leader>N` away.
 └──────────────────────────────────────────────────────────────┘
 ```
 
-No prefix key, no picker, no lookup. The list is already on screen, so the jump
-is one chord.
-
 - **Stable numbers.** Sessions are ordered by creation time, so a new one always
   appends at the end. `<leader>3` is the same session tomorrow.
-- **Always visible.** A single floating window, not a statusline segment and not
-  a screen row. It never touches your buffers.
+- **Two surfaces.** An always-on floating window, a popup on `<leader>ts`, or
+  neither — the keys work regardless. Set `ghost.enabled = false` if a permanent
+  list reads as noise; `:TmuxSessionsToggle` brings it back when you want it.
+- **Never touches your buffers.** A real floating window, not a statusline
+  segment, not virtual text, not a screen row.
 - **Quiet.** Refreshes when a switch lands on your pane, plus a slow 5s floor.
   Turn on tmux hooks and an idle machine queries tmux zero times.
 - **`<leader>0`** goes back to the session you came from.
@@ -84,6 +89,12 @@ require("tmux-sessions").setup({
     separator = "  ",
   },
 
+  picker = {
+    position = "top-right", -- or "center"
+    min_width = 34,         -- floor, so short names don't give a mean little box
+    margin = 2,             -- cells from the screen edge
+  },
+
   keys = {
     enabled = true,
     prefix = "<leader>",  -- gives <leader>1 .. <leader>9
@@ -125,6 +136,28 @@ Either way the block sits flush against the right edge. Entries stay
 left-aligned inside it, so the numbers line up rather than going ragged.
 
 A list taller than the screen is truncated, never pushed off the bottom.
+
+### The popup
+
+`<leader>ts` opens the list as a popup instead. It reads the same cache, so
+opening it costs no tmux query.
+
+```
+              ╭ tmux sessions ─────────╮
+              │   1  main              │
+              │   2  effective-tutorial│
+              │ ▸ 3  solo-effect       │
+              │   4  packages          │
+              ╰────────────────────────╯
+```
+
+`1`–`9` jump, `<CR>` picks whatever the cursor is on, `q` or `<Esc>` closes.
+It opens top-right by default — it is a jump list you are in for one keystroke,
+and centred it lands on the code you were reading. `picker.position = "center"`
+if you prefer it in the middle.
+
+Pairing `ghost.enabled = false` with this gives you the list only when you ask
+for it.
 
 ## Commands
 
