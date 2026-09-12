@@ -46,17 +46,27 @@ local cache = {}
 ---
 --- argv form, never a shell string: it is what makes a session named `$(x)`
 --- inert bytes rather than a command substitution.
+---
+--- The callback is handed back on the main loop. `vim.system`'s on_exit runs in
+--- a fast event context, where most of the API raises E5560, and every caller
+--- here ends in keymaps, windows or highlights. Scheduling once at the source
+--- is cheaper than auditing each callback for what it is allowed to touch.
 ---@param argv string[]
 ---@param cb fun(lines: string[]|nil)
 function M.spawn(argv, cb)
+  local function done(lines)
+    vim.schedule(function()
+      cb(lines)
+    end)
+  end
   local ok = pcall(vim.system, argv, { text = true }, function(res)
     if res.code ~= 0 or not res.stdout then
-      return cb(nil)
+      return done(nil)
     end
-    cb(vim.split(res.stdout, "\n", { trimempty = true }))
+    done(vim.split(res.stdout, "\n", { trimempty = true }))
   end)
   if not ok then
-    cb(nil)
+    done(nil)
   end
 end
 
