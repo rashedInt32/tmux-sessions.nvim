@@ -9,6 +9,7 @@
 
 ---@class tmux-sessions.GhostConfig
 ---@field enabled boolean
+---@field layout "vertical"|"horizontal" one session per row, or all on one row
 ---@field max_items integer past this, the tail collapses to a dim `+N`
 ---@field name_width integer truncate longer names to this many display cells
 ---@field hide_in_insert boolean
@@ -53,10 +54,16 @@ M.defaults = {
 
   ghost = {
     enabled = true,
+    -- One session per row. A vertical block puts the index digits in a column
+    -- you can scan, and buys the width to show names untruncated; the cost is
+    -- rows, which the top-right corner has more of than it has columns.
+    layout = "vertical",
     -- 9 because the bindings are <leader>1..<leader>9. Anything past that has no
     -- key to show, so it collapses rather than taking space.
     max_items = 9,
-    name_width = 12,
+    -- Roomier than the horizontal layout could afford, since each row now has
+    -- the full width to itself.
+    name_width = 20,
     hide_in_insert = false,
     winblend = 0,
     row = 0,

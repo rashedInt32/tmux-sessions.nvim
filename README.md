@@ -5,10 +5,11 @@ a `<leader>N` away.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ init.lua            1 main  2 effective-t…  3 solo  4 pkgs   │
-│                                                              │
-│ local M = {}                                                 │
-│                                                              │
+│ local M = {}                              1 main             │
+│                                           2 effective-tut…   │
+│ function M.setup(opts)                    3 solo-effect      │
+│   ...                                     4 packages         │
+│ end                                                          │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -71,8 +72,9 @@ require("tmux-sessions").setup({
 
   ghost = {
     enabled = true,
+    layout = "vertical",  -- or "horizontal", all on one row
     max_items = 9,        -- past this, the tail collapses to a dim +N
-    name_width = 12,      -- truncate longer names with an ellipsis
+    name_width = 20,      -- truncate longer names with an ellipsis
     hide_in_insert = false,
     winblend = 0,
     row = 0,
@@ -100,6 +102,29 @@ require("tmux-sessions").setup({
 
 `<leader>` rather than bare digits on purpose: `1`..`9` are vim's count prefix,
 and shadowing them breaks `3dd`.
+
+### Layout
+
+`vertical` (default) gives one session per row, with the index digits in a
+column you can scan and room for untruncated names:
+
+```
+1 main
+2 effective-tutorial
+3 solo-effect
+4 packages
+```
+
+`horizontal` collapses it to a single row, costing one screen line instead of N:
+
+```
+1 main  2 effective-t…  3 solo-effect  4 packages
+```
+
+Either way the block sits flush against the right edge. Entries stay
+left-aligned inside it, so the numbers line up rather than going ragged.
+
+A list taller than the screen is truncated, never pushed off the bottom.
 
 ## Commands
 

@@ -137,10 +137,12 @@ function Child:ghost()
     local w = G._win()
     if not w or not vim.api.nvim_win_is_valid(w) then return nil end
     local cfg = vim.api.nvim_win_get_config(w)
+    local lines = vim.api.nvim_buf_get_lines(G._buf(), 0, -1, false)
     return {
-      text = vim.api.nvim_buf_get_lines(G._buf(), 0, -1, false)[1],
-      row = cfg.row, col = cfg.col, width = cfg.width, zindex = cfg.zindex,
-      focusable = cfg.focusable, relative = cfg.relative,
+      lines = lines,
+      text = table.concat(lines, "\n"),
+      row = cfg.row, col = cfg.col, width = cfg.width, height = cfg.height,
+      zindex = cfg.zindex, focusable = cfg.focusable, relative = cfg.relative,
     }
   ]])
 end

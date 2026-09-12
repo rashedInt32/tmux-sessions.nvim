@@ -54,16 +54,57 @@ return function(H)
     c:stop()
   end)
 
-  H.it("sits flush against the right edge", function()
+  H.it("stacks one session per row by default", function()
     local c = child()
-    c:lua("vim.o.columns = 120")
-    c:fixture({ H.line("$1", 1000, "main") })
+    c:fixture({
+      H.line("$1", 1000, "main"),
+      H.line("$2", 2000, "tut"),
+      H.line("$3", 3000, "solo"),
+    })
     local g = c:ghost()
-    H.eq(120 - g.width - 1, g.col, "col + width + col_offset == columns")
+    H.eq({ "1 main", "2 tut", "3 solo" }, g.lines)
+    H.eq(3, g.height, "the float is as tall as the list")
+    H.eq(6, g.width, "as wide as the longest entry, not the sum")
     c:stop()
   end)
 
-  H.it("collapses the tail past max_items into +N", function()
+  H.it("layout = horizontal puts them all on one row", function()
+    local c = child({ ghost = { layout = "horizontal" } })
+    c:fixture({ H.line("$1", 1000, "main"), H.line("$2", 2000, "tut") })
+    local g = c:ghost()
+    H.eq({ "1 main  2 tut" }, g.lines)
+    H.eq(1, g.height)
+    c:stop()
+  end)
+
+  H.it("sits flush against the right edge in both layouts", function()
+    for _, layout in ipairs({ "vertical", "horizontal" }) do
+      local c = child({ ghost = { layout = layout } })
+      c:lua("vim.o.columns = 120")
+      c:fixture({ H.line("$1", 1000, "main"), H.line("$2", 2000, "a-longer-name") })
+      local g = c:ghost()
+      H.eq(120 - g.width - 1, g.col, layout .. ": col + width + col_offset == columns")
+      c:stop()
+    end
+  end)
+
+  H.it("the index column lines up when the count reaches double digits", function()
+    -- Entries are left-aligned inside a right-positioned block precisely so the
+    -- digits form a readable column; right-aligning each row would not.
+    local c = child({ ghost = { max_items = 12 } })
+    local lines = {}
+    for i = 1, 11 do
+      lines[i] = H.line("$" .. i, 1000 + i, "s" .. i)
+    end
+    c:fixture(lines)
+    local g = c:ghost()
+    H.eq(11, #g.lines)
+    H.eq("9 s9", g.lines[9])
+    H.eq("10 s10", g.lines[10])
+    c:stop()
+  end)
+
+  H.it("collapses the tail past max_items into its own +N row", function()
     local c = child({ ghost = { max_items = 3 } })
     local lines = {}
     for i = 1, 7 do
@@ -71,8 +112,22 @@ return function(H)
     end
     c:fixture(lines)
     local g = c:ghost()
-    H.contains(g.text, "+4")
-    H.ok(not g.text:find("s5", 1, true), "s5 is past the cap")
+    H.eq({ "1 s1", "2 s2", "3 s3", "+4" }, g.lines)
+    c:stop()
+  end)
+
+  H.it("a list taller than the screen is truncated, not pushed off it", function()
+    local c = child({ ghost = { max_items = 30 } })
+    c:lua("vim.o.lines = 10")
+    local lines = {}
+    for i = 1, 25 do
+      lines[i] = H.line("$" .. i, 1000 + i, "s" .. i)
+    end
+    c:fixture(lines)
+    local g = c:ghost()
+    H.ok(g, "still shown")
+    H.ok(g.height <= 8, "leaves the statusline and cmdline their rows; got " .. g.height)
+    H.eq(g.height, #g.lines, "buffer holds only what the float can show")
     c:stop()
   end)
 
