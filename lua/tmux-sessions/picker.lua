@@ -4,6 +4,7 @@
 -- It exists for what the ghost text structurally cannot show: sessions past
 -- index 9, untruncated names, and window counts.
 
+local Config = require("tmux-sessions.config")
 local Highlights = require("tmux-sessions.highlights")
 local Sessions = require("tmux-sessions.sessions")
 local Switch = require("tmux-sessions.switch")
@@ -32,7 +33,8 @@ function M.open()
 
   Highlights.ensure()
 
-  local lines, width = {}, 20
+  local pc = Config.options.picker
+  local lines, width = {}, pc.min_width
   for i, s in ipairs(list) do
     -- The marker sits where a name can never reach it, so a session called
     -- "*" cannot fake being the current one.
@@ -51,11 +53,23 @@ function M.open()
   end
 
   local height = math.min(#lines, math.max(1, vim.o.lines - 6))
+  width = math.min(width, vim.o.columns - 2)
+
+  local row, col
+  if pc.position == "center" then
+    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1)
+    col = math.max(0, math.floor((vim.o.columns - width) / 2))
+  else
+    -- `margin` accounts for the border, which sits outside the given width.
+    row = pc.margin
+    col = math.max(0, vim.o.columns - width - pc.margin - 2)
+  end
+
   local win = vim.api.nvim_open_win(buf, true, {
     relative = "editor",
-    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1),
-    col = math.max(0, math.floor((vim.o.columns - width) / 2)),
-    width = math.min(width, vim.o.columns),
+    row = row,
+    col = col,
+    width = width,
     height = height,
     style = "minimal",
     border = "rounded",

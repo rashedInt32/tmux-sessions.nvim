@@ -20,6 +20,11 @@
 ---@field format string `string.format` pattern for one entry: index, name
 ---@field separator string between entries
 
+---@class tmux-sessions.PickerConfig
+---@field position "top-right"|"center" where the popup opens
+---@field min_width integer floor on the popup width
+---@field margin integer cells from the screen edge when top-right
+
 ---@class tmux-sessions.KeysConfig
 ---@field enabled boolean
 ---@field prefix string `<leader>` gives `<leader>1` .. `<leader>9`
@@ -31,6 +36,7 @@
 ---@field refresh tmux-sessions.RefreshConfig
 ---@field ghost tmux-sessions.GhostConfig
 ---@field keys tmux-sessions.KeysConfig
+---@field picker tmux-sessions.PickerConfig
 ---@field highlights table<string, string>
 
 local M = {}
@@ -73,6 +79,18 @@ M.defaults = {
     zindex = 10,
     format = "%d %s",
     separator = "  ",
+  },
+
+  picker = {
+    -- Top-right, not centred. This is a jump list you are in for one keystroke,
+    -- not something to read, and centred it lands squarely on the code you were
+    -- looking at. Top-right is also where the ghost text used to be, so the eye
+    -- already goes there.
+    position = "top-right",
+    -- Centred popups look mean when they hug their content; this is the floor
+    -- either way.
+    min_width = 34,
+    margin = 2,
   },
 
   keys = {
