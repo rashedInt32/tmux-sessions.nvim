@@ -33,6 +33,7 @@
 
 ---@class tmux-sessions.Config
 ---@field enabled boolean
+---@field backend "auto"|"tmux"|"sluice" which multiplexer to drive
 ---@field refresh tmux-sessions.RefreshConfig
 ---@field ghost tmux-sessions.GhostConfig
 ---@field keys tmux-sessions.KeysConfig
@@ -44,6 +45,10 @@ local M = {}
 ---@type tmux-sessions.Config
 M.defaults = {
   enabled = true,
+
+  -- "auto" takes the first multiplexer whose environment is present, tmux
+  -- first. Naming one pins it, and keeps the plugin dormant when it is absent.
+  backend = "auto",
 
   refresh = {
     -- A `switch-client` landing on this pane fires FocusGained, so the list is

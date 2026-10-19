@@ -38,7 +38,7 @@ function M.open()
   for i, s in ipairs(list) do
     -- The marker sits where a name can never reach it, so a session called
     -- "*" cannot fake being the current one.
-    lines[i] = ("%s %-2d %s"):format(s.current and "▸" or " ", i, s.name)
+    lines[i] = ("%s %-2d %s%s"):format(s.current and "▸" or " ", i, s.name, Sessions.count_mark(s))
     width = math.max(width, vim.fn.strdisplaywidth(lines[i]) + 4)
   end
 

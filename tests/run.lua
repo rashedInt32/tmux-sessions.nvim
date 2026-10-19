@@ -61,7 +61,7 @@ Child.__index = Child
 ---@param env? table extra environment, e.g. { TMUX = ... }
 function H.child(opts, env)
   local e = vim.fn.environ()
-  e.TMUX, e.TMUX_PANE = nil, nil
+  e.TMUX, e.TMUX_PANE, e.ZMX_SESSION = nil, nil, nil
   e = vim.tbl_extend("force", e, env or {})
   local chan = vim.fn.jobstart({
     "nvim",
@@ -170,6 +170,13 @@ function H.it(name, fn)
     io.write("  FAIL ", full, "\n")
   end
 end
+
+-- Specs feed tmux-shaped fixtures straight into the parser, so the backend is
+-- pinned rather than detected: the process running the suite may itself be
+-- sitting inside the other multiplexer, which would otherwise be auto-picked
+-- and reject every fixture line. Specs that drive a real window spawn a child
+-- with its own environment and detect normally there.
+require("tmux-sessions.backend").use("tmux")
 
 local specs = vim.fn.glob(root .. "/tests/specs/*.lua", false, true)
 table.sort(specs)

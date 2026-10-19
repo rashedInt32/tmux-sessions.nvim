@@ -12,8 +12,8 @@
 
 local M = {}
 
---- True once setup() has run inside a tmux client. Outside tmux the plugin is
---- fully dormant: no window, no keymap, no timer, no subprocess.
+--- True once setup() has run inside a supported multiplexer. Outside one the
+--- plugin is fully dormant: no window, no keymap, no timer, no subprocess.
 local active = false
 
 ---@return boolean
@@ -50,6 +50,12 @@ function M.refresh(cb)
   return require("tmux-sessions.watch").refresh(true)
 end
 
+--- Which backend is driving: "tmux", "sluice", or "none" when dormant.
+---@return string
+function M.backend()
+  return require("tmux-sessions.backend").name()
+end
+
 --- The cached session list, for a statusline component of your own.
 ---@return tmux-sessions.Session[]
 function M.list()
@@ -60,6 +66,34 @@ end
 ---@return boolean visible
 function M.toggle()
   return require("tmux-sessions.ghost").toggle()
+end
+
+--- "◆2/3" while the session this nvim lives in has more than one window:
+--- which window this nvim is in, of how many. Empty otherwise, and always
+--- empty under tmux. Reads the cache only, so it is free to call per redraw.
+---@return string
+function M.window_mark()
+  local b = require("tmux-sessions.backend").get()
+  if not active or not b or not b.window_mark then
+    return ""
+  end
+  for _, s in ipairs(M.list()) do
+    if s.current then
+      return b.window_mark(s)
+    end
+  end
+  return ""
+end
+
+--- Ready-made lualine component for `window_mark()`, hidden when empty.
+---@return table
+function M.lualine_windows()
+  return {
+    M.window_mark,
+    cond = function()
+      return M.window_mark() ~= ""
+    end,
+  }
 end
 
 --- Ready-made lualine component, shaped like claude-sessions.nvim's.
@@ -91,6 +125,9 @@ function M.stop()
   pcall(function()
     require("tmux-sessions.sessions").reset()
   end)
+  pcall(function()
+    require("tmux-sessions.backend").reset()
+  end)
   active = false
 end
 
@@ -101,9 +138,12 @@ function M.setup(opts)
 
   M.stop()
 
-  -- Outside tmux there is nothing to list and nothing to switch to, so the
-  -- plugin does not merely render empty -- it starts nothing at all.
-  if not Config.options.enabled or not vim.env.TMUX then
+  -- Outside a multiplexer there is nothing to list and nothing to switch to,
+  -- so the plugin does not merely render empty -- it starts nothing at all.
+  if not Config.options.enabled then
+    return
+  end
+  if not require("tmux-sessions.backend").detect(Config.options.backend) then
     return
   end
 

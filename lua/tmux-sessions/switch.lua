@@ -1,15 +1,16 @@
--- Move the tmux client to another session.
+-- Move this pane to another session.
 --
--- This is the only write the plugin makes to tmux, and the only place a value
--- derived from the session list becomes a command argument. Two guards, both
--- cheap: the target is always a `$<digits>` session id, re-validated here
--- rather than trusted from the cache, and it goes out as argv so nothing in it
--- can be interpreted by a shell.
+-- The only write the plugin makes, and the only place a value derived from the
+-- session list becomes a command argument. Two guards, both cheap: the backend
+-- re-validates its own handle rather than trusting the cache, and the command
+-- goes out as argv so nothing in it can be interpreted by a shell.
 --
--- Note what switching does to us: `switch-client` moves the whole client, so
--- this nvim stays behind in the old session. That is expected -- each tmux
--- session runs its own nvim, and this plugin is a launcher, not a manager.
+-- Note what a switch does to us. tmux's `switch-client` moves the whole client
+-- and `sluice switch` reattaches the pane's sluice process; either way this
+-- nvim stays behind in the old session. That is expected -- each session runs
+-- its own nvim, and this plugin is a launcher, not a manager.
 
+local Backend = require("tmux-sessions.backend")
 local Sessions = require("tmux-sessions.sessions")
 
 local M = {}
@@ -21,7 +22,7 @@ local function warn(msg)
   end)
 end
 
---- Run a tmux command, and treat a failure as "the list is stale".
+--- Run a backend command, and treat a failure as "the list is stale".
 ---
 --- A session killed between the last refresh and this keypress is the common
 --- case, and it is not exceptional enough to raise: warn, re-query, move on.
@@ -38,9 +39,13 @@ end
 
 --- Jump to the session at `index` in the current list.
 ---@param index integer
----@return boolean started true when a tmux command was actually issued
+---@return boolean started true when a command was actually issued
 function M.to(index)
   if type(index) ~= "number" then
+    return false
+  end
+  local backend = Backend.get()
+  if not backend then
     return false
   end
   local session = Sessions.at(index)
@@ -48,21 +53,29 @@ function M.to(index)
     warn("no session at " .. tostring(index))
     return false
   end
-  -- Re-validated at the boundary rather than trusted from the cache: this is
-  -- the value that becomes a process argument.
-  if not tostring(session.id):match("^%$%d+$") then
-    warn("refusing a malformed session id")
+  local argv = backend.switch_argv(session)
+  if not argv then
+    warn("refusing a malformed session handle")
     return false
   end
-  run({ "tmux", "switch-client", "-t", session.id }, "switch to " .. session.id)
+  run(argv, "switch to " .. tostring(session.name))
   return true
 end
 
---- Back to the previously attached session. tmux tracks this itself, so there
---- is no state to keep on our side.
+--- Back to the previously attached session. Both backends track this
+--- themselves, so there is no state to keep on our side.
 ---@return boolean
 function M.last()
-  run({ "tmux", "switch-client", "-l" }, "switch to last session")
+  local backend = Backend.get()
+  if not backend then
+    return false
+  end
+  local argv = backend.last_argv()
+  if not argv then
+    warn("this backend cannot name the previous session")
+    return false
+  end
+  run(argv, "switch to last session")
   return true
 end
 

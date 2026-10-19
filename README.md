@@ -1,6 +1,8 @@
 # tmux-sessions.nvim
 
-Jump between tmux sessions from inside Neovim, each one a `<leader>N` away.
+Jump between terminal sessions from inside Neovim, each one a `<leader>N` away.
+Works in tmux, and in [sluice](https://github.com/rashedInt32/sluice) (zmx
+sessions). The backend is detected at `setup()`.
 
 https://github.com/user-attachments/assets/568af6c1-cafa-4e5d-8da1-80abe3002e7f
 
@@ -32,21 +34,35 @@ to session 3 whether or not anything is drawn.
 
 ## How it works, and what it is not
 
-`tmux switch-client` moves the whole client, so your Neovim stays behind in the
-old session. That makes this a **launcher, not a manager**: every tmux session
-runs its own Neovim with its own copy of the plugin, each querying tmux
-independently.
+A switch moves the pane, so your Neovim stays behind in the old session. That
+makes this a **launcher, not a manager**: every session runs its own Neovim
+with its own copy of the plugin, each querying independently.
 
-It is read-only against tmux apart from `switch-client` and the opt-in hooks.
-It will not create, rename or kill sessions — tmux already does that well.
+It is read-only against the multiplexer apart from the switch itself and the
+opt-in tmux hooks. It will not create, rename or kill sessions — tmux and
+sluice already do that well.
 
-Outside tmux it is completely dormant: no window, no keymap, no timer, no
+Outside both it is completely dormant: no window, no keymap, no timer, no
 subprocess.
+
+## Backends
+
+| | tmux | sluice |
+| --- | --- | --- |
+| detected by | `$TMUX` | `$ZMX_SESSION` |
+| listing | `tmux list-sessions` | `sluice list` |
+| switching | `switch-client -t $id` | `sluice switch <name>` |
+| `<leader>0` | `switch-client -l` | `sluice switch -` |
+| hooks | yes, opt-in | no, the 5s timer carries it |
+
+`backend = "auto"` takes the first one whose environment is present, tmux
+first, because a tmux running inside a sluice session is a tmux pane. Name one
+to pin it.
 
 ## Requirements
 
 - Neovim **≥ 0.10**
-- tmux **≥ 3.0** (for the `session_created` format field)
+- tmux **≥ 3.0** (for the `session_created` format field), or sluice with zmx
 
 ## Install
 
@@ -67,10 +83,11 @@ All options with their defaults:
 ```lua
 require("tmux-sessions").setup({
   enabled = true,
+  backend = "auto",     -- or "tmux" / "sluice" to pin one
 
   refresh = {
     interval_ms = 5000,   -- background floor; 0 disables the timer
-    on_focus = true,      -- re-query when a switch-client lands here
+    on_focus = true,      -- re-query when a switch lands here
     hooks = false,        -- see "Zero polling" below
     stamp = "/tmp/tmux-sessions.nvim/stamp",
   },

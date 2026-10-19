@@ -78,7 +78,7 @@ function M.entries()
   local out = {}
 
   for _, session in ipairs(shown) do
-    local name = M.truncate(session.name, g.name_width)
+    local name = M.truncate(session.name, g.name_width) .. Sessions.count_mark(session)
     local text = g.format:format(session.index, name)
     local digits = #tostring(session.index)
     out[#out + 1] = {

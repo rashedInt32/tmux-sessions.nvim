@@ -1,40 +1,23 @@
--- Ask tmux for its sessions, and turn the answer into a stable numbered list.
+-- Ask the multiplexer for its sessions, and turn the answer into a stable
+-- numbered list.
 --
--- Two decisions here carry the plugin, both verified against tmux 3.7c.
---
--- 1. Sessions are targeted by `#{session_id}`, never by name. With sessions
---    `main` and `main2` alive, `tmux display-message -t main` resolves to
---    `main` by prefix match, and the documented exact form `=main` came back
---    empty. A session id is always `$<digits>`, so it is unambiguous and
---    carries nothing a user chose. Names are display only.
---
--- 2. Fields are TAB separated, with the name last. tmux happily accepts a
---    session named `ev;il|na me$(x)` -- pipes, semicolons, `$()` and spaces all
---    survive -- so a `|` separator splits that line into the wrong number of
---    fields. tmux *rejects* tab, newline and ESC in a name, which makes TAB the
---    one separator a name can never contain.
+-- Everything multiplexer-specific -- the command, the line format, how the
+-- current session is identified -- lives in `backend/`. This module owns the
+-- part both share: spawning, ordering and caching.
 
+local Backend = require("tmux-sessions.backend")
 local Config = require("tmux-sessions.config")
-
-local uv = vim.uv or vim.loop
 
 local M = {}
 
--- Name last, because it is the only field whose content a user picks.
-local FORMAT = table.concat({
-  "#{session_id}",
-  "#{session_created}",
-  "#{session_attached}",
-  "#{session_windows}",
-  "#{session_name}",
-}, "\t")
-
 ---@class tmux-sessions.Session
----@field id string tmux session id, always `$<digits>`
+---@field id string backend handle: a tmux `$<digits>`, or a zmx session name
 ---@field name string raw session name, untruncated
 ---@field created integer unix seconds
 ---@field attached integer number of clients attached
 ---@field windows integer
+---@field cwd? string working directory, when the backend reports one
+---@field window_names? string[] sluice only: zmx names of the session's windows
 ---@field index integer 1-based position in creation order
 ---@field current boolean this nvim lives in this session
 
@@ -70,62 +53,44 @@ function M.spawn(argv, cb)
   end
 end
 
---- The session this nvim is running in, read straight out of `$TMUX`.
----
---- `$TMUX` is `<socket>,<server_pid>,<session_id>`, so the id is free -- no
---- spawn, no guessing from `#{session_attached}` (which is ambiguous once a
---- second client attaches). It is captured at attach time, so moving this pane
---- to another session leaves it stale until nvim restarts; that costs one
---- wrong highlight, so it is not worth a subprocess to correct.
----
---- Read through libuv, not `vim.env`: `vim.env` is backed by the Vimscript
---- `getenv`, which raises E5560 in a fast event context. parse() is reached
---- from a uv timer callback, so this has to be callable from anywhere.
----@return string? id
+--- The session this nvim is running in, as the active backend names it.
+---@return string?
 function M.current_id()
-  local tmux = uv.os_getenv("TMUX")
-  if not tmux or tmux == "" then
-    return nil
-  end
-  local n = tmux:match("^[^,]*,%d+,(%d+)$")
-  return n and ("$" .. n) or nil
+  local b = Backend.get()
+  return b and b.current_id() or nil
 end
 
---- Turn raw `list-sessions` lines into the numbered list.
+--- Turn raw listing lines into the numbered list.
 ---
 --- Sorted by creation time so a new session always appends: indices 1..N never
 --- shift when one is created, which is the whole reason fixed keybindings are
---- worth having. `session_created` only has second resolution, so two sessions
---- born in the same second tie -- broken by the numeric id, which tmux hands
---- out monotonically. Without that tiebreak the sort is unstable and two
---- keybindings silently swap between queries.
+--- worth having. Creation time has second resolution in both backends, so two
+--- sessions born in the same second tie; the backend breaks it with something
+--- it hands out monotonically. Without that tiebreak the sort is unstable and
+--- two keybindings silently swap between queries.
 ---@param lines string[]
 ---@return tmux-sessions.Session[]
 function M.parse(lines)
-  local current = M.current_id()
+  local b = Backend.get()
+  if not b then
+    return {}
+  end
+  local current = b.current_id()
   local out = {}
 
   for _, line in ipairs(lines or {}) do
-    local id, created, attached, windows, name = line:match("^(%S+)\t(%d+)\t(%d+)\t(%d+)\t(.*)$")
-    -- A malformed line is dropped rather than raised: a tmux that grows a field
-    -- should cost a stale list, not a stacktrace on every keystroke.
-    if id and id:match("^%$%d+$") and name ~= "" then
-      out[#out + 1] = {
-        id = id,
-        name = name,
-        created = tonumber(created),
-        attached = tonumber(attached),
-        windows = tonumber(windows),
-        current = id == current,
-      }
+    local row = b.parse_line(line)
+    if row then
+      row.current = row.id == current
+      out[#out + 1] = row
     end
   end
 
-  table.sort(out, function(a, b)
-    if a.created ~= b.created then
-      return a.created < b.created
+  table.sort(out, function(x, y)
+    if x.created ~= y.created then
+      return x.created < y.created
     end
-    return tonumber(a.id:sub(2)) < tonumber(b.id:sub(2))
+    return b.before(x, y)
   end)
 
   for i, s in ipairs(out) do
@@ -134,11 +99,20 @@ function M.parse(lines)
   return out
 end
 
---- Re-query tmux and replace the cache. `cb` receives `true` when the list
---- changed, so callers can skip a redraw and a keymap rebuild.
+--- Re-query and replace the cache. `cb` receives `true` when the list changed,
+--- so callers can skip a redraw and a keymap rebuild.
 ---@param cb? fun(changed: boolean)
 function M.refresh(cb)
-  M.spawn({ "tmux", "list-sessions", "-F", FORMAT }, function(lines)
+  local b = Backend.get()
+  if not b then
+    if cb then
+      vim.schedule(function()
+        cb(false)
+      end)
+    end
+    return
+  end
+  M.spawn(b.list_argv(), function(lines)
     local next_list = M.parse(lines)
     local changed = not vim.deep_equal(cache, next_list)
     cache = next_list
@@ -173,11 +147,25 @@ function M.window()
   return vim.list_slice(cache, 1, max), #cache - max
 end
 
+--- " ◆3" after a session that has more than one window, for the list views.
+--- Only sluice reports its windows by name; under tmux this is always empty,
+--- so the tmux display is unchanged.
+---@param session tmux-sessions.Session
+---@return string
+function M.count_mark(session)
+  local n = session.window_names and #session.window_names or 0
+  if n > 1 then
+    return (" ◆%d"):format(n)
+  end
+  return ""
+end
+
 --- Drop the cache. Only for specs and `stop()`.
 function M.reset()
   cache = {}
 end
 
-M.FORMAT = FORMAT
+-- Kept for callers and specs that referred to the tmux format directly.
+M.FORMAT = require("tmux-sessions.backend.tmux").FORMAT
 
 return M

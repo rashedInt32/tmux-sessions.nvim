@@ -18,6 +18,60 @@ function M.check()
   local H = vim.health
   H.start("tmux-sessions.nvim")
 
+  local Backend = require("tmux-sessions.backend")
+  local backend = Backend.get()
+
+  if not backend then
+    H.warn("no multiplexer detected: neither $TMUX nor $ZMX_SESSION is set, so the plugin stays dormant")
+    H.info("supported backends: " .. table.concat(Backend.names, ", "))
+    return
+  end
+  H.ok("backend: " .. backend.name)
+
+  if backend.name == "sluice" then
+    M.check_sluice(H)
+  else
+    M.check_tmux(H)
+  end
+
+  local id = require("tmux-sessions.sessions").current_id()
+  if id then
+    H.ok("current session " .. id)
+  else
+    H.warn("the current session could not be identified; it will not be highlighted")
+  end
+
+  local r = Config.options.refresh
+  if r.hooks and not backend.supports_hooks then
+    H.warn(("refresh.hooks is on, but the %s backend has no hooks; falling back to the timer"):format(backend.name))
+  elseif r.hooks then
+    if require("tmux-sessions.watch")._safe_path(r.stamp) then
+      H.ok("tmux hooks enabled, watching " .. r.stamp)
+    else
+      H.error("refresh.stamp is not a safe path: " .. tostring(r.stamp))
+    end
+  else
+    H.ok(("polling every %dms"):format(r.interval_ms))
+  end
+
+  local count = #require("tmux-sessions").list()
+  H.info(("%d session%s in the cache"):format(count, count == 1 and "" or "s"))
+end
+
+--- sluice itself, plus the zmx daemon it drives.
+function M.check_sluice(H)
+  if vim.fn.executable("sluice") == 0 then
+    H.error("sluice not found on $PATH")
+    return
+  end
+  H.ok(vim.trim(vim.fn.system({ "sluice", "--version" })))
+  if vim.fn.executable("zmx") == 0 then
+    H.error("zmx not found on $PATH; sluice cannot list or switch sessions without it")
+  end
+end
+
+--- tmux, its version, and the focus-events setting the refresh leans on.
+function M.check_tmux(H)
   if vim.fn.executable("tmux") == 0 then
     H.error("tmux not found on $PATH")
     return
@@ -33,31 +87,9 @@ function M.check()
     H.ok(("tmux %s"):format(vim.trim(out)))
   end
 
-  if not vim.env.TMUX then
-    H.warn("$TMUX is not set: nvim is not inside a tmux client, so the plugin stays dormant")
-  else
-    local id = require("tmux-sessions.sessions").current_id()
-    if id then
-      H.ok("attached to session " .. id)
-    else
-      H.warn("$TMUX is set but does not parse; the current session will not be highlighted")
-    end
-  end
-
-  local r = Config.options.refresh
-  if r.hooks then
-    if require("tmux-sessions.watch")._safe_path(r.stamp) then
-      H.ok("tmux hooks enabled, watching " .. r.stamp)
-    else
-      H.error("refresh.stamp is not a safe path: " .. tostring(r.stamp))
-    end
-  else
-    H.ok(("polling every %dms (set refresh.hooks = true for zero polling)"):format(r.interval_ms))
-  end
-
   -- Without focus-events tmux never tells nvim a switch landed, so the timer is
   -- doing all the work and the list can lag by interval_ms.
-  if r.on_focus then
+  if Config.options.refresh.on_focus then
     local focus = vim.trim(vim.fn.system({ "tmux", "show-options", "-gv", "focus-events" }))
     if focus == "on" then
       H.ok("tmux focus-events on")
@@ -65,9 +97,6 @@ function M.check()
       H.warn("tmux focus-events is off; add `set -g focus-events on` to tmux.conf for instant refresh")
     end
   end
-
-  local count = #require("tmux-sessions").list()
-  H.info(("%d session%s in the cache"):format(count, count == 1 and "" or "s"))
 end
 
 M._parse_version = parse_version

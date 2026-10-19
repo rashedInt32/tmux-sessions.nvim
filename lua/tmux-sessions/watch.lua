@@ -12,9 +12,10 @@
 --   * A slow timer, 5s, purely to notice sessions created in another pane.
 --   * VimResized repositions without spawning.
 --
--- Opt-in path: tmux hooks touch a stamp file, every nvim watches it with one
--- fs_event, and an idle machine spawns tmux zero times.
+-- Opt-in path, tmux only: tmux hooks touch a stamp file, every nvim watches it
+-- with one fs_event, and an idle machine spawns tmux zero times.
 
+local Backend = require("tmux-sessions.backend")
 local Config = require("tmux-sessions.config")
 local Ghost = require("tmux-sessions.ghost")
 local Keys = require("tmux-sessions.keys")
@@ -124,14 +125,17 @@ function M.start()
   if r.on_focus then
     vim.api.nvim_create_autocmd("FocusGained", {
       group = vim.api.nvim_create_augroup(GROUP, { clear = true }),
-      desc = "Refresh the tmux session list when a switch lands here",
+      desc = "Refresh the session list when a switch lands here",
       callback = function()
         M.refresh()
       end,
     })
   end
 
-  if r.hooks then
+  -- Hooks are a tmux feature. zmx has no hook system, so the sluice backend
+  -- leans on FocusGained plus the timer, which is the default path anyway.
+  local backend = Backend.get()
+  if r.hooks and backend and backend.supports_hooks then
     watch_stamp()
     M.install_hooks()
   end
