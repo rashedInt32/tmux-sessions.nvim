@@ -21,10 +21,22 @@ local M = {
   supports_hooks = false,
 }
 
+--- In a zmx session *and* sluice is installed. zmx exports ZMX_SESSION on its
+--- own, so plain zmx users have it too; without sluice there is nothing to
+--- list or switch with, and the plugin must stay dormant for them as it did
+--- before this backend existed.
 ---@return boolean
 function M.detect()
   local v = uv.os_getenv("ZMX_SESSION")
-  return v ~= nil and v ~= ""
+  if v == nil or v == "" then
+    return false
+  end
+  -- executable() is not allowed in a fast event; detection normally runs from
+  -- setup() on the main loop, so this only skips the check in the rare case.
+  if vim.in_fast_event() then
+    return true
+  end
+  return vim.fn.executable("sluice") == 1
 end
 
 ---@return string[]

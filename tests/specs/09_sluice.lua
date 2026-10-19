@@ -231,6 +231,29 @@ return function(H)
     Backend.use("tmux")
   end)
 
+  H.it("a plain zmx user without sluice installed keeps the plugin dormant", function()
+    local saved_zmx = uv.os_getenv("ZMX_SESSION")
+    local saved_tmux = uv.os_getenv("TMUX")
+    local saved_path = uv.os_getenv("PATH")
+    uv.os_setenv("ZMX_SESSION", "s")
+    pcall(uv.os_unsetenv, "TMUX")
+    uv.os_setenv("PATH", "/nonexistent") -- no sluice anywhere
+
+    H.eq(false, Sluice.detect(), "ZMX_SESSION alone is not enough")
+    H.eq(nil, Backend.detect("auto"))
+
+    uv.os_setenv("PATH", saved_path)
+    if saved_zmx then
+      uv.os_setenv("ZMX_SESSION", saved_zmx)
+    else
+      pcall(uv.os_unsetenv, "ZMX_SESSION")
+    end
+    if saved_tmux then
+      uv.os_setenv("TMUX", saved_tmux)
+    end
+    Backend.use("tmux")
+  end)
+
   H.it("the sluice backend declares no hook support", function()
     H.eq(false, Sluice.supports_hooks, "zmx has no hooks; the timer carries the refresh")
     H.eq(true, require("tmux-sessions.backend.tmux").supports_hooks)
